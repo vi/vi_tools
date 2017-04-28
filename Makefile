@@ -4,4 +4,5 @@ CFLAGS=-Wall -ggdb ${EXTRACFLAGS}
 
 all: ${PROGS}
 
-
+runso: runso.c
+	${CC} -fPIC -pie -Wl,-E ${CFLAGS} $^ -ldl -o $@

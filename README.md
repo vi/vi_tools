@@ -27,3 +27,12 @@ Usage: cgroup_memory_pressure_monitor {low|medium|critical} /sys/fs/cgroup/memor
 # uksm_tease
 
 Fill up memory with non-zero content compressible by Ultra Kernel Same page Merging.
+
+# runso
+
+Rundll for Linux. Loads main-like symbol from a library and executes it.
+
+```
+$ ./runso  ./runso main  ./runso main
+Usage: runso ./libsomelibrary.so main <args>
+```
