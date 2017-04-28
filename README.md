@@ -23,3 +23,7 @@ Command-line access to control groups memory pressume monitoring events
 ```
 Usage: cgroup_memory_pressure_monitor {low|medium|critical} /sys/fs/cgroup/memory/your_cgroup
 ```
+
+# uksm_tease
+
+Fill up memory with non-zero content compressible by Ultra Kernel Same page Merging.
