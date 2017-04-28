@@ -14,3 +14,12 @@ After tying to access
 ```
 
 Like `flock` tool, can also operate on file descriptors.
+
+
+# cgroup_memory_pressure_monitor
+
+Command-line access to control groups memory pressume monitoring events
+
+```
+Usage: cgroup_memory_pressure_monitor {low|medium|critical} /sys/fs/cgroup/memory/your_cgroup
+```
