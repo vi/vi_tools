@@ -1,0 +1,46 @@
+#!/bin/sh
+
+if [ -z "$1" ]; then
+    echo "Usage: netemplus iface rate {ratelatency | loss losscorr delay jitter}"
+    echo "Example lat: netemplus wlan0 1000kbps 20ms"
+    echo "Example loss: netemplus wlan0 1000kbit 2.0 1.0 300ms 100ms"
+    echo "Usage2: netemplus iface del"
+    echo "See also: ingressifb"
+    exit 1
+fi
+
+IFACE=$1
+
+if [ "$2" = "del" ]; then
+    tc qdisc del dev $IFACE parent 1:0 handle 10: netem
+    tc qdisc del dev $IFACE root handle 1:0 tbf rate 1000 buffer 16000 latency 1000
+    exit 0
+fi
+
+if [ -n "$4" ]; then
+    RATE=$2
+    RATELAT=111ms # does not work
+    LOSS=$3
+    LOSSC=$4
+    DELAY=$5
+    JIT=$6
+    DONETEM=y
+else
+    RATE=$2
+    RATELAT=$3
+    DONETEM=n
+fi
+
+tc qdisc change dev $IFACE root handle 1:0 tbf rate $RATE buffer 16000 latency $RATELAT
+if [ $? = 2 ]; then
+   tc qdisc add dev $IFACE root handle 1:0 tbf rate $RATE buffer 16000 latency $RATELAT
+fi
+
+if [ $DONETEM = y ]; then
+
+    tc qdisc change dev $IFACE parent 1:0 handle 10: netem delay $DELAY $JIT loss $LOSS $LOSSC
+    if [ $? = 2 ]; then
+       tc qdisc add dev $IFACE parent 1:0 handle 10: netem delay $DELAY $JIT loss $LOSS $LOSSC
+    fi
+
+fi

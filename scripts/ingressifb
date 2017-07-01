@@ -1,0 +1,26 @@
+#!/bin/sh
+
+if [ -z "$1" ]; then
+    echo "Usage: addifb iface [del]"
+    exit 1
+fi
+
+IFACE=$1
+IFB=${IFACE}_ifb
+
+set -ex
+modprobe ifb numifbs=0
+
+if [ "$2" = del ]; then
+    tc filter del dev $IFACE parent ffff:
+    tc qdisc del dev $IFACE handle ffff: ingress
+    ip link del $IFB
+    exit 0;
+fi
+
+ip link add $IFB numtxqueues 1 txqueuelen 4 type ifb
+
+ip link set $IFB up
+tc qdisc add dev $IFACE handle ffff: ingress
+tc filter add dev $IFACE parent ffff: u32 match u32 0 0 action mirred egress redirect dev $IFB
+echo tc qdisc change dev $IFB root handle 1:0 ...
