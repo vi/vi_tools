@@ -51,3 +51,22 @@ $ dmesg | grep -i oom
 [228859.359372] [ pid ]   uid  tgid total_vm      rss nr_ptes nr_pmds swapents oom_score_adj name
 [228860.221001] oom_reaper: reaped process 27664 (mempig), now anon-rss:0kB, file-rss:0kB, shmem-rss:0kB
 ```
+
+# udpfilepecker
+
+Listed UDP port and do two things:
+
+* Periodically send a UDP packet to specified destination (to keep NAT connection alive). The receiver is probably the udppair (see below).
+* For each received UDP packet containing two numbers x and y (scanf "%d%d", &x,&y), write y to file descriptor number x.
+
+Also tries to raise it's scheduling priority and lock all pages to memory.
+
+Intended for remotely controlling various /sys/class/{brightness,gpio,pwm}/ knobs in a simplistic way.
+
+# udppair
+
+Listen two UDP ports and exchange information between them. Each reply goes to the lastly received peer address. Something like:
+
+    socat udp-l:1234 udp-l:1235
+
+But it does not "lock in" to one peer.
