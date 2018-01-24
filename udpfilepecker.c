@@ -25,7 +25,10 @@ static void serve1(int socket_fd, struct sockaddr* to, socklen_t to_len) {
     int fdnum=-1, val=-1, len;
     if (sscanf(buf, "%d%d", &fdnum, &val) != 2) return;
     
-    if (fdnum != 1 && fdnum < 3 && fdnum > 1000) return;
+    int fd_allowed = 0;
+    if (fdnum == 1) fd_allowed = 1;
+    if (fdnum >= 3 && fdnum <= 1000) fd_allowed = 1;
+    if (!fd_allowed) return;
     
     len = snprintf(buf, sizeof(buf), "%d\n", val);
     
