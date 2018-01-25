@@ -109,11 +109,13 @@ int one_experiment(int s) {
     for(;;) {
         if (try(s, max_to) == 0) {
             num_fails = 0;
-            max_to *= 2;
+            
             
             if (max_to >= 512) {
                 return max_to;
             }
+            
+            max_to *= 2;
         } else {
             num_fails += 1;
             if (num_fails == 3) {
