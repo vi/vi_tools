@@ -57,6 +57,108 @@ static void serve1(int socket_fd) {
     _exit(0);
 }
 
+
+int try(int s, int seconds) {
+    fprintf(stderr, "Trying with timeout %d seconds...", seconds);
+    
+    struct timeval tv;
+    tv.tv_sec = seconds + 2;
+    tv.tv_usec = 0;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    
+    char buf[128];
+    int l;
+    l = snprintf(buf, sizeof(buf), "0 0 %d 0\n", seconds);
+    
+    l = send(s, buf, l, 0);
+    if (l == -1) {
+        perror("send");
+        return -1;
+    }
+    
+    l = recv(s, buf, sizeof(buf), 0);
+    if(l<1) { 
+        fprintf(stderr, "Fail B...\n");
+        return -1;
+    }
+    if(buf[0] != 'B') {
+        fprintf(stderr, "Strange B\n");
+        return -1;
+    }
+    
+    
+    l = recv(s, buf, sizeof(buf), 0);
+    if(l<1) {
+        fprintf(stderr, "FAIL\n");
+        return -1;
+    }
+    if(buf[0] != 'A') {
+        fprintf(stderr, "Strange A\n");
+        return -1;
+    }
+    
+    fprintf(stderr, "OK\n");
+    return 0;
+}
+
+int one_experiment(int s) {
+    int max_to = 1;
+    int num_fails = 0;
+    
+    // Phase 1 - double the timeout until it fails
+    for(;;) {
+        if (try(s, max_to) == 0) {
+            num_fails = 0;
+            max_to *= 2;
+            
+            if (max_to >= 512) {
+                return max_to;
+            }
+        } else {
+            num_fails += 1;
+            if (num_fails == 3) {
+                break;
+            }
+        }
+    }
+    
+    if (max_to == 1) return 0;
+    
+    int min_to = max_to / 2;
+    
+    for(;;) {
+        if (max_to - min_to <= 2) {
+            fprintf(stderr, "Intermediate result: %d\n", min_to);
+            return min_to;
+        }
+        int candidate = (min_to + max_to) / 2;
+        
+        if (try(s, candidate) == 0) {
+            min_to = candidate;
+        } else {
+            max_to = candidate;
+        }
+    }
+}
+
+static int numcmp(const void *p1, const void *p2) {
+    return (*(const int*)p1) - (*(const int*)p2);
+}
+
+
+int probe(int s) {
+    int exps[3];
+    int i;
+    for(i=0; i<sizeof(exps)/sizeof(exps[0]); ++i) {
+        exps[i] = one_experiment(s);
+    }
+    qsort(exps, sizeof(exps)/sizeof(exps[0]), sizeof(exps[0]), &numcmp);
+    
+    printf("%d\n", exps[1]);
+    
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc != 4 && argc != 6) {
         fprintf(stderr, "Usage:\n");
@@ -98,6 +200,7 @@ int main(int argc, char* argv[]) {
     
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+    hints.ai_family = AF_INET;
     hints.ai_flags = AI_PASSIVE;
     
     int gai_error;
@@ -138,8 +241,11 @@ int main(int argc, char* argv[]) {
     }
     
     if (!strcmp(cmd,"probe")) {
-        fprintf(stderr, "Not implemented\n");
-        return 1;
+        if (-1 == connect(s, send_addr->ai_addr, send_addr->ai_addrlen)) {
+            perror("connect");
+            return 6;
+        }
+        return probe(s);
     }
 }
 
