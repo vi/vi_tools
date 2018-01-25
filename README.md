@@ -70,3 +70,60 @@ Listen two UDP ports and exchange information between them. Each reply goes to t
     socat udp-l:1234 udp-l:1235
 
 But it does not "lock in" to one peer.
+
+# udptimeoutchecker
+
+Measure UDP connection timeout in NAT by probing with different delays and testing if connectin still works or not. Server part replies to UDP packets based on timeout in incoming UDP packets. Client checks increasing timeouts until it detects missing reply packets, then "bisects" to find out more exact shut-off delay. Range is from 2 to 512 seconds. There may be running public server on vi-server.org:909 port.
+
+```
+$ udptimeoutchecker probe 0.0.0.0 0 vi-server.org 909
+Trying with timeout 1 seconds...OK
+Trying with timeout 2 seconds...OK
+Trying with timeout 4 seconds...OK
+Trying with timeout 8 seconds...OK
+Trying with timeout 16 seconds...OK
+Trying with timeout 32 seconds...OK
+Trying with timeout 64 seconds...OK
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 96 seconds...FAIL
+Trying with timeout 80 seconds...FAIL
+Trying with timeout 72 seconds...FAIL
+Trying with timeout 68 seconds...FAIL
+Trying with timeout 66 seconds...FAIL
+Intermediate result: 64
+Trying with timeout 1 seconds...OK
+Trying with timeout 2 seconds...OK
+Trying with timeout 4 seconds...OK
+Trying with timeout 8 seconds...OK
+Trying with timeout 16 seconds...OK
+Trying with timeout 32 seconds...OK
+Trying with timeout 64 seconds...OK
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 96 seconds...FAIL
+Trying with timeout 80 seconds...FAIL
+Trying with timeout 72 seconds...FAIL
+Trying with timeout 68 seconds...FAIL
+Trying with timeout 66 seconds...FAIL
+Intermediate result: 64
+Trying with timeout 1 seconds...OK
+Trying with timeout 2 seconds...OK
+Trying with timeout 4 seconds...OK
+Trying with timeout 8 seconds...OK
+Trying with timeout 16 seconds...OK
+Trying with timeout 32 seconds...OK
+Trying with timeout 64 seconds...OK
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 128 seconds...FAIL
+Trying with timeout 96 seconds...FAIL
+Trying with timeout 80 seconds...FAIL
+Trying with timeout 72 seconds...FAIL
+Trying with timeout 68 seconds...FAIL
+Trying with timeout 66 seconds...FAIL
+Intermediate result: 64
+64
+```
