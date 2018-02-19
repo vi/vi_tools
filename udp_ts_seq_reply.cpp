@@ -63,9 +63,9 @@ static void serve1(int socket_fd) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 3) {
+    if (argc != 4) {
         fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "    udp_ts_seq_reply listen_addr listen_port \n");
+        fprintf(stderr, "    udp_ts_seq_reply serve listen_addr listen_port \n");
         fprintf(stderr, "Echoes packets back, prepending ts and seq num.\n");
         fprintf(stderr, "Example:\n");
         fprintf(stderr, "    udp_ts_seq_reply serve 0.0.0.0 919\n");
@@ -73,8 +73,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    const char* bind_addr_ = argv[1];
-    const char* bind_port_ = argv[2];
+    const char* cmd = argv[1];
+    const char* addr_ = argv[2];
+    const char* port_ = argv[3];
+    
+    if (!!strcmp(cmd, "serve")) {
+        fprintf(stderr, "Command must be 'serve'\n");
+        return 1;
+    }
     
     struct addrinfo hints;
     struct addrinfo *recv_addr;
@@ -82,10 +88,12 @@ int main(int argc, char* argv[]) {
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
     hints.ai_family = AF_INET;
-    hints.ai_flags = AI_PASSIVE;
+    if (!strcmp(cmd, "serve")) {
+        hints.ai_flags = AI_PASSIVE;
+    }
     
     int gai_error;
-    gai_error=getaddrinfo(bind_addr_,bind_port_, &hints, &recv_addr);
+    gai_error=getaddrinfo(addr_,port_, &hints, &recv_addr);
     if (gai_error) { fprintf(stderr, "getaddrinfo 1: %s\n",gai_strerror(gai_error)); return 4; }
     if (!recv_addr) { fprintf(stderr, "getaddrinfo returned no addresses\n");   return 6;  }
     if (recv_addr->ai_next) {
