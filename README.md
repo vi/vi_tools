@@ -127,3 +127,36 @@ Trying with timeout 66 seconds...FAIL
 Intermediate result: 64
 64
 ```
+
+# udp_ts_seq_reply
+
+Prepend each UDP packets with 12 bytes of nanosecond timestamp (8 bytes for seconds, 4 for nanoseconds) and 4 bytes of per-client sequence number and send them back.
+
+```
+$ ./udp_ts_seq_reply 0.0.0.0 1919&
+$ socat -x -v - udp:127.0.0.1:1919 > /dev/null
+123
+> 2018/02/19 19:52:08.981246  length=4 from=0 to=3
+ 31 32 33 0a                                      123.
+--
+< 2018/02/19 19:52:08.981712  length=20 from=0 to=19
+ 00 00 00 00 00 57 2f 47 09 a8 bf 83 00 00 00 01  .....W/G........
+ 31 32 33 0a                                      123.
+--
+ABC
+> 2018/02/19 19:52:11.439685  length=4 from=4 to=7
+ 41 42 43 0a                                      ABC.
+--
+< 2018/02/19 19:52:11.440078  length=20 from=20 to=39
+ 00 00 00 00 00 57 2f 49 24 fa c5 ed 00 00 00 02  .....W/I$.......
+ 41 42 43 0a                                      ABC.
+--
+DEF
+> 2018/02/19 19:52:13.094035  length=4 from=8 to=11
+ 44 45 46 0a                                      DEF.
+--
+< 2018/02/19 19:52:13.094455  length=20 from=40 to=59
+ 00 00 00 00 00 57 2f 4b 10 61 48 68 00 00 00 03  .....W/K.aHh....
+ 44 45 46 0a                                      DEF.
+--
+
