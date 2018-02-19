@@ -1,6 +1,7 @@
 *
 !scripts
 !*.c
+!*.cpp
 !Makefile
 !*.md
 !*.h
