@@ -38,19 +38,8 @@ long int timespec_milli(const struct timespec* q) {
 
 
 // Entries are never deleted
-std::map<struct sockaddr_in, uint32_t> seqs;
-std::map<struct sockaddr_in, struct timespec> lastseens;
-
-
-bool operator< (const sockaddr_in &a, const sockaddr_in &b) {
-    if (a.sin_addr.s_addr != b.sin_addr.s_addr) {
-        return a.sin_addr.s_addr < b.sin_addr.s_addr;
-    }
-    if (a.sin_port != b.sin_port) {
-        return a.sin_port < b.sin_port;
-    }
-    return false;
-}
+std::map<uint32_t, uint32_t> seqs;
+std::map<uint32_t, struct timespec> lastseens;
 
 static void serve1(int socket_fd) {
     char buf[65536];
@@ -65,22 +54,29 @@ static void serve1(int socket_fd) {
         return;
     }
     
+    uint32_t id = 0;
+    
+    if (ret >= 4) {
+        memcpy(&id, buf, 4);
+    }
+    
     memmove(buf+16, buf, ret);
     ret+=16;
     
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     
-    if (lastseens.count(sa)) {
-        struct timespec lastseen = lastseens[sa];
+    if (lastseens.count(id)) {
+        struct timespec lastseen = lastseens[id];
         struct timespec age;
         timespec_diff(&lastseen, &ts, &age);
         if (age.tv_sec > 60) {
-            seqs[sa] = 0;
+            seqs[id] = 0;
         }
     } else {
-        seqs[sa] = 0;
+        seqs[id] = 0;
     }
+    
     
     uint32_t high = htonl((ts.tv_sec&0xFFFFFFFF00000000LL)>>32);
     memcpy(buf+ 0, &high, 4);
@@ -88,13 +84,13 @@ static void serve1(int socket_fd) {
     memcpy(buf+ 4, &low, 4);
     uint32_t nano = htonl(ts.tv_nsec);
     memcpy(buf+ 8, &nano, 4);
-    uint32_t seq = htonl(seqs[sa]);
+    uint32_t seq = htonl(seqs[id]);
     memcpy(buf+ 12, &seq, 4);
     
     sendto(socket_fd, buf, ret, 0,  (struct sockaddr*)&sa, sa_len);
     
-    ++seqs[sa];
-    lastseens[sa] = ts;
+    ++seqs[id];
+    lastseens[id] = ts;
 }
 
 struct timespec start;
@@ -106,29 +102,35 @@ static void probe(int s, int pktsize, int kbps, int overhead) {
     
     uint8_t buf[65536];
     
+    uint32_t id;
+    
     memset(buf, 0, pktsize);
+    
+    unsigned packets_in_first_5_seconds = 1000*1000*1000 / delay_ns * 5;
     
     uint32_t seq_ = 0;
     struct timespec ts;
     struct timespec ts_next;
     
     clock_gettime(CLOCK_MONOTONIC, &ts_next);
+    id = (ts_next.tv_sec & 0xFFFFFFFF) ^ (ts_next.tv_nsec & 0xFFFFFFFF);
     for(;;) {
         clock_gettime(CLOCK_MONOTONIC, &ts);
         
+        memcpy(buf+ 0, &id, 4);
         uint32_t high = htonl((ts.tv_sec&0xFFFFFFFF00000000LL)>>32);
-        memcpy(buf+ 0, &high, 4);
+        memcpy(buf+ 4, &high, 4);
         uint32_t low  = htonl((ts.tv_sec&0x00000000FFFFFFFFLL)>>0);
-        memcpy(buf+ 4, &low, 4);
+        memcpy(buf+ 8, &low, 4);
         uint32_t nano = htonl(ts.tv_nsec);
-        memcpy(buf+ 8, &nano, 4);
+        memcpy(buf+ 12, &nano, 4);
         uint32_t seq = htonl(seq_);
-        memcpy(buf+ 12, &seq, 4);
+        memcpy(buf+ 16, &seq, 4);
         
         int len = pktsize;
         
-        if (seq_ < 8) {
-            len = 16; // warmup to get min rtt.
+        if (seq_ < packets_in_first_5_seconds) {
+            len = 20; // warmup to get min rtt.
         }
         
         send(s, buf, len, 0);
@@ -188,6 +190,8 @@ static void measure(int s) {
             //fputc('.', stderr);
         }
         
+        uint32_t id;
+        
         clock_gettime(CLOCK_MONOTONIC, &info.ts3);
         {
             uint32_t high;
@@ -208,10 +212,11 @@ static void measure(int s) {
             uint32_t low;
             uint32_t nano;
             uint32_t seq;
-            memcpy( &high    ,buf+ 16+0  , 4);
-            memcpy( &low     ,buf+ 16+4  , 4);
-            memcpy( &nano    ,buf+ 16+8  , 4);
-            memcpy( &seq     ,buf+ 16+12 , 4);
+            memcpy( &id      ,buf+ 16+0  , 4);
+            memcpy( &high    ,buf+ 16+4  , 4);
+            memcpy( &low     ,buf+ 16+8  , 4);
+            memcpy( &nano    ,buf+ 16+12  , 4);
+            memcpy( &seq     ,buf+ 16+16 , 4);
             info.ts1.tv_sec = ((uint64_t)ntohl(high)) << 32;
             info.ts1.tv_sec |= ntohl(low);
             info.ts1.tv_nsec = ntohl(nano);
@@ -276,7 +281,7 @@ static void measure(int s) {
             (unsigned long) info.ts2.tv_sec, (unsigned long) info.ts2.tv_nsec/1000/1000,
             (unsigned long) info.ts3.tv_sec, (unsigned long) info.ts3.tv_nsec/1000/1000);
         
-        fprintf(stdout, "%02d", (int)ret);
+        fprintf(stdout, "%02d %lu", (int)ret, (unsigned long)id);
         
         fprintf(stdout, "\n");
         
@@ -366,8 +371,8 @@ int main(int argc, char* argv[]) {
         int packet_size    = atoi(argv[5]);
         int overhead       = atoi(argv[6]);
         
-        if (packet_size < 16) {
-            fprintf(stderr, "Minimal packet_size is 16\n");
+        if (packet_size < 20) {
+            fprintf(stderr, "Minimal packet_size is 20\n");
             return 1;
         }
         if (packet_size > 65536) {
