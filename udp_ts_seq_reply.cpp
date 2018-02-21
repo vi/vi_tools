@@ -12,6 +12,7 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #include <map>
 
@@ -96,8 +97,12 @@ static void serve1(int socket_fd) {
     lastseens[sa] = ts;
 }
 
+struct timespec start;
+
+pid_t probe_pid;
+
 static void probe(int s, int pktsize, int kbps, int overhead) {
-    long delay_ns = (pktsize+overhead)*8000000 / kbps;
+    long delay_ns = ((pktsize+overhead) * 8000) / kbps *1000;
     
     uint8_t buf[65536];
     
@@ -120,7 +125,13 @@ static void probe(int s, int pktsize, int kbps, int overhead) {
         uint32_t seq = htonl(seq_);
         memcpy(buf+ 12, &seq, 4);
         
-        send(s, buf, pktsize, 0);
+        int len = pktsize;
+        
+        if (seq_ < 8) {
+            len = 16; // warmup to get min rtt.
+        }
+        
+        send(s, buf, len, 0);
         
         seq_+=1;
         
@@ -145,9 +156,6 @@ struct snapshot {
 static void measure(int s) {
     char buf[65536];
     
-    struct timespec start;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    
     bool firstreport = true;
     struct snapshot info;
     uint32_t seq3 = 0;
@@ -155,6 +163,19 @@ static void measure(int s) {
     uint32_t minrtt = 0xFFFFFFFF;
     
     for(;;) {
+        if (!firstreport) {
+            struct timespec check;
+            clock_gettime(CLOCK_MONOTONIC, &check);
+            struct timespec diff;
+            timespec_diff(&info.ts3, &check, &diff);
+            long disc = timespec_milli(&diff);
+            if (disc > 2) {
+                printf("Output was clogged for %ld ms\n", disc);
+            }
+        } else {
+            firstreport = false;
+        }
+        
         ssize_t ret = recv(s, buf, sizeof(buf), 0);
         if (ret == -1) {
             if (errno == EAGAIN) {
@@ -197,20 +218,10 @@ static void measure(int s) {
             info.seq1 = ntohl(seq);
         }
         
-        if(false){
-            fprintf(stderr, "ts1=%lu %lu  ts2=%lu %lu ts3=%lu %lu\n",
-                    (unsigned long) info.ts1.tv_sec, (unsigned long) info.ts1.tv_nsec,
-                    (unsigned long) info.ts2.tv_sec, (unsigned long) info.ts2.tv_nsec,
-                    (unsigned long) info.ts3.tv_sec, (unsigned long) info.ts3.tv_nsec);
-        }
         info.seq3 = seq3;
-        if (firstreport) {
-            firstreport = false;
-            basets2 = info.ts2;
-        }
         
         struct timespec t;
-        timespec_diff(&start, &info.ts3, &t);
+        timespec_diff(&start, &info.ts1, &t);
         
         long cumseqloss_loc = (long)info.seq1 - info.seq3;
         long cumseqloss_rem = (long)info.seq2 - info.seq3;
@@ -218,19 +229,45 @@ static void measure(int s) {
         struct timespec rtt_;
         timespec_diff(&info.ts1, &info.ts3, &rtt_);
         long rtt = timespec_milli(&rtt_);
-        if (minrtt > rtt) minrtt = rtt;
+        
+        if (minrtt > rtt) {
+            minrtt = rtt;
+            
+            struct timespec d;
+            timespec_diff(&info.ts1, &info.ts2, &d);
+            basets2 = start;
+            basets2.tv_sec += d.tv_sec;
+            basets2.tv_nsec += d.tv_nsec;
+            if (basets2.tv_nsec > 1000*1000*1000) {
+                basets2.tv_sec+=1;
+                basets2.tv_nsec-=1000*1000*1000;
+            }
+            
+        }
         
         struct timespec remote;
         struct timespec remote_d_;
         timespec_diff(&basets2, &info.ts2, &remote);
-        timespec_diff(&remote, &t, &remote_d_);
+        timespec_diff(&t, &remote, &remote_d_);
         long remote_d = timespec_milli(&remote_d_);
         
-        fprintf(stdout, "%ld ", timespec_milli(&t));
-        fprintf(stdout, "%ld ", cumseqloss_rem);
-        fprintf(stdout, "%ld ", minrtt/2 + rtt - remote_d);
-        fprintf(stdout, "%ld ", cumseqloss_loc-cumseqloss_rem);
-        fprintf(stdout, "%ld ", remote_d - minrtt/2);
+        fprintf(stdout, "%5ld ", timespec_milli(&t));
+        fprintf(stdout, "%3ld ", cumseqloss_loc-cumseqloss_rem);
+        fprintf(stdout, "%4ld ", remote_d + minrtt/2);
+        fprintf(stdout, "%3ld ", cumseqloss_rem);
+        fprintf(stdout, "%4ld ", rtt - remote_d - minrtt/2);
+        
+        fprintf(stdout, "  ");
+        
+        fprintf(stdout, "%lu %lu %lu  ",
+            (unsigned long) info.seq1,
+            (unsigned long) info.seq2,
+            (unsigned long) info.seq3);
+        fprintf(stdout, "%lu.%03lu %lu.%03lu %lu.%03lu",
+            (unsigned long) info.ts1.tv_sec, (unsigned long) info.ts1.tv_nsec/1000/1000,
+            (unsigned long) info.ts2.tv_sec, (unsigned long) info.ts2.tv_nsec/1000/1000,
+            (unsigned long) info.ts3.tv_sec, (unsigned long) info.ts3.tv_nsec/1000/1000);
+        
         
         fprintf(stdout, "\n");
         
@@ -238,17 +275,23 @@ static void measure(int s) {
     }
 }
 
+static void signal_handler(int x) {
+    if (probe_pid > 0) {
+        kill(probe_pid, SIGTERM);
+    }
+    _exit(0);
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 4 && argc != 7) {
         fprintf(stderr, "Usage:\n");
         fprintf(stderr, "    udp_ts_seq_reply serve listen_addr listen_port \n");
-        fprintf(stderr, "    udp_ts_seq_reply probe connect_addr connect_port packet_size kbps overhead_bytes_per_packet\n");
+        fprintf(stderr, "    udp_ts_seq_reply probe connect_addr connect_port kbps packet_size overhead_bytes_per_packet\n");
         fprintf(stderr, "'serve' echoes UDP packets back, prepending ts and seq num.\n");
         fprintf(stderr, "'probe' measures network delay and loss.\n");
         fprintf(stderr, "Example:\n");
         fprintf(stderr, "    udp_ts_seq_reply serve 0.0.0.0 919\n");
-        fprintf(stderr, "    udp_ts_seq_reply probe 0.0.0.0 919  140 30 32\n");
+        fprintf(stderr, "    udp_ts_seq_reply probe 0.0.0.0 919  30  140 32\n");
         fprintf(stderr, "\n");
         return 1;
     }
@@ -310,9 +353,9 @@ int main(int argc, char* argv[]) {
         if (connect(s, addr->ai_addr, addr->ai_addrlen)) {  perror("connect");  return 5;  }
         
         
-        int packet_size = atoi(argv[4]);
-        int kbps            = atoi(argv[5]);
-        int overhead         = atoi(argv[6]);
+        int kbps           = atoi(argv[4]);
+        int packet_size    = atoi(argv[5]);
+        int overhead       = atoi(argv[6]);
         
         if (packet_size < 16) {
             fprintf(stderr, "Minimal packet_size is 16\n");
@@ -338,11 +381,18 @@ int main(int argc, char* argv[]) {
             sleep(3);
         }
         
-        pid_t f = fork();
-        if(!f) {
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        probe_pid = fork();
+        if(!probe_pid) {
             probe(s, packet_size, kbps, overhead);
         } else 
-        if (f > 0) {
+        if (probe_pid > 0) {
+            {
+                struct sigaction sa = {signal_handler};
+                sigaction(SIGINT, &sa, NULL);
+                sigaction(SIGTERM, &sa, NULL);
+            }
+        
             measure(s);
         } else {
             perror("fork");
