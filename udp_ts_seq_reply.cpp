@@ -233,8 +233,14 @@ static void measure(int s) {
         if (minrtt > rtt) {
             minrtt = rtt;
             
+            fprintf(stdout, "basets2 debug: ");
             struct timespec d;
             timespec_diff(&info.ts1, &info.ts2, &d);
+            
+            fprintf(stdout, "%lu.%03lu + %lu.%03lu = ",
+                (unsigned long) start.tv_sec, (unsigned long) start.tv_nsec/1000/1000,
+                (unsigned long) d.tv_sec, (unsigned long) d.tv_nsec/1000/1000);
+            
             basets2 = start;
             basets2.tv_sec += d.tv_sec;
             basets2.tv_nsec += d.tv_nsec;
@@ -242,6 +248,8 @@ static void measure(int s) {
                 basets2.tv_sec+=1;
                 basets2.tv_nsec-=1000*1000*1000;
             }
+            fprintf(stdout, "%lu.%03lu\n",
+                (unsigned long) basets2.tv_sec, (unsigned long) basets2.tv_nsec/1000/1000);
             
         }
         
@@ -263,11 +271,12 @@ static void measure(int s) {
             (unsigned long) info.seq1,
             (unsigned long) info.seq2,
             (unsigned long) info.seq3);
-        fprintf(stdout, "%lu.%03lu %lu.%03lu %lu.%03lu",
+        fprintf(stdout, "%lu.%03lu %lu.%03lu %lu.%03lu  ",
             (unsigned long) info.ts1.tv_sec, (unsigned long) info.ts1.tv_nsec/1000/1000,
             (unsigned long) info.ts2.tv_sec, (unsigned long) info.ts2.tv_nsec/1000/1000,
             (unsigned long) info.ts3.tv_sec, (unsigned long) info.ts3.tv_nsec/1000/1000);
         
+        fprintf(stdout, "%02d", (int)ret);
         
         fprintf(stdout, "\n");
         
