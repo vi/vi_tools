@@ -402,7 +402,9 @@ int main(int argc, char* argv[]) {
         } else 
         if (probe_pid > 0) {
             {
-                struct sigaction sa = {signal_handler};
+                struct sigaction sa;
+                memset(&sa, 0, sizeof(sa));
+                sa.sa_handler = &signal_handler;
                 sigaction(SIGINT, &sa, NULL);
                 sigaction(SIGTERM, &sa, NULL);
             }
