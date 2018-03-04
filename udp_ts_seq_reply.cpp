@@ -171,23 +171,28 @@ static void measure(int s) {
             struct timespec diff;
             timespec_diff(&info.ts3, &check, &diff);
             long disc = timespec_milli(&diff);
-            if (disc > 2) {
-                printf("Output was clogged for %ld ms\n", disc);
+            if (disc > 3) {
+                printf(" Output was clogged for %ld ms\n", disc);
             }
-        } else {
-            firstreport = false;
         }
         
         ssize_t ret = recv(s, buf, sizeof(buf), 0);
         if (ret == -1) {
             if (errno == EAGAIN) {
-                //fputc('-', stderr);
+                printf("OUTAGE\n");
             } else {
-                fputc('!', stderr);
+                printf("ERROR\n");
             }
+            clock_gettime(CLOCK_MONOTONIC, &info.ts3);
+            fflush(stdout);
             continue;
         } else {
             //fputc('.', stderr);
+        }
+        
+        
+        if (firstreport) {
+            firstreport = false;
         }
         
         uint32_t id;
@@ -238,13 +243,13 @@ static void measure(int s) {
         if (minrtt > rtt) {
             minrtt = rtt;
             
-            fprintf(stdout, "basets2 debug: ");
+            //fprintf(stdout, "basets2 debug: ");
             struct timespec d;
             timespec_diff(&info.ts1, &info.ts2, &d);
             
-            fprintf(stdout, "%lu.%03lu + %lu.%03lu = ",
-                (unsigned long) start.tv_sec, (unsigned long) start.tv_nsec/1000/1000,
-                (unsigned long) d.tv_sec, (unsigned long) d.tv_nsec/1000/1000);
+            //fprintf(stdout, "%lu.%03lu + %lu.%03lu = ",
+            //    (unsigned long) start.tv_sec, (unsigned long) start.tv_nsec/1000/1000,
+            //    (unsigned long) d.tv_sec, (unsigned long) d.tv_nsec/1000/1000);
             
             basets2 = start;
             basets2.tv_sec += d.tv_sec;
@@ -253,8 +258,8 @@ static void measure(int s) {
                 basets2.tv_sec+=1;
                 basets2.tv_nsec-=1000*1000*1000;
             }
-            fprintf(stdout, "%lu.%03lu\n",
-                (unsigned long) basets2.tv_sec, (unsigned long) basets2.tv_nsec/1000/1000);
+            //fprintf(stdout, "%lu.%03lu\n",
+            //    (unsigned long) basets2.tv_sec, (unsigned long) basets2.tv_nsec/1000/1000);
             
         }
         
@@ -284,6 +289,7 @@ static void measure(int s) {
         fprintf(stdout, "%02d %lu", (int)ret, (unsigned long)id);
         
         fprintf(stdout, "\n");
+        fflush(stdout);
         
         seq3 += 1;
     }
@@ -390,7 +396,10 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         if (kbps > 100*1000) {
-            fprintf(stderr, "Caution: kbps > 100mbit/s. Do you really want to flood the network?\n");
+            fprintf(stderr, "Caution: kbps > 100mbit/s.\n");
+            sleep(1);
+            fprintf(stderr, "Do you really want to flood the network?\n");
+            sleep(1);
             fprintf(stderr, "(waiting for 3 seconds before continuing)");
             sleep(3);
         }
@@ -408,6 +417,15 @@ int main(int argc, char* argv[]) {
                 sigaction(SIGINT, &sa, NULL);
                 sigaction(SIGTERM, &sa, NULL);
                 sigaction(SIGPIPE, &sa, NULL);
+            }
+            
+            {
+                long delay_us = ((packet_size+overhead) * 8000) / kbps * 1;
+                delay_us *= 10;
+                struct timeval tv;
+                tv.tv_sec = delay_us / 1000 / 1000;
+                tv.tv_usec = delay_us % (1000 * 1000);
+                setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             }
         
             measure(s);
