@@ -159,10 +159,20 @@ static void measure(int s) {
     char buf[65536];
     
     bool firstreport = true;
+    bool outage_reported = false;
     struct snapshot info;
     uint32_t seq3 = 0;
     struct timespec basets2;
     uint32_t minrtt = 0xFFFFFFFF;
+    
+    clock_gettime(CLOCK_REALTIME, &info.ts3);
+    printf("CLOCK_REALTIME=%ld.%09ld ", 
+                (long)info.ts3.tv_sec, 
+                (long)info.ts3.tv_nsec);
+    clock_gettime(CLOCK_MONOTONIC, &info.ts3);
+    printf("CLOCK_MONOTONIC=%ld.%09ld\n", 
+                (long)info.ts3.tv_sec, 
+                (long)info.ts3.tv_nsec);
     
     for(;;) {
         if (!firstreport) {
@@ -179,7 +189,10 @@ static void measure(int s) {
         ssize_t ret = recv(s, buf, sizeof(buf), 0);
         if (ret == -1) {
             if (errno == EAGAIN) {
-                printf("OUTAGE\n");
+                if (!outage_reported) {
+                    printf("OUTAGE\n");
+                    outage_reported = true;
+                }
             } else {
                 printf("ERROR\n");
             }
@@ -194,6 +207,7 @@ static void measure(int s) {
         if (firstreport) {
             firstreport = false;
         }
+        outage_reported = false;
         
         uint32_t id;
         
@@ -403,6 +417,9 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "(waiting for 3 seconds before continuing)");
             sleep(3);
         }
+
+        printf("SETTINGS %s %s %d %d %d\n",
+               addr_, port_, kbps, packet_size, overhead);
         
         clock_gettime(CLOCK_MONOTONIC, &start);
         probe_pid = fork();
@@ -422,6 +439,9 @@ int main(int argc, char* argv[]) {
             {
                 long delay_us = ((packet_size+overhead) * 8000) / kbps * 1;
                 delay_us *= 10;
+                if (delay_us < 200*1000) {
+                    delay_us = 200*1000;
+                }
                 struct timeval tv;
                 tv.tv_sec = delay_us / 1000 / 1000;
                 tv.tv_usec = delay_us % (1000 * 1000);
