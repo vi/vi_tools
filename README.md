@@ -160,3 +160,16 @@ DEF
  44 45 46 0a                                      DEF.
 --
 
+
+# dump_tc_stats
+
+```
+$ dump_tc_stats
+Usage: dump_tc_stats <iface>
+Dump interface statistics periodically. Don't forget to `tc qdisc add <iface> root ...` something
+
+$ dump_tc_stats veth0
+{"PACKETS":23514,"BYTES":2979825,"RATE_BPS":0,"RATE_PPS":0,"QLEN":0,"BACKLOG":0,"DROPS":0,"REQUEUES":0,"OVERLIMITS":0}
+{"PACKETS":23526,"BYTES":2981342,"RATE_BPS":0,"RATE_PPS":0,"QLEN":0,"BACKLOG":0,"DROPS":0,"REQUEUES":0,"OVERLIMITS":0}
+...
+```
