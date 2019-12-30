@@ -10,3 +10,6 @@ runso: runso.c
 
 dump_tc_stats: dump_tc_stats.c
 	${CC} ${CFLAGS} `pkg-config --cflags --libs libnl-3.0 libnl-route-3.0 libnl-cli-3.0` $^ -o $@
+
+fstest: fstest.c
+	${CC} ${CFLAGS} -DSIGNAL fstest.c -O2 -o fstest
