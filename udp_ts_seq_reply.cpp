@@ -97,7 +97,7 @@ struct timespec start;
 
 pid_t probe_pid;
 
-static void probe(int s, int pktsize, int kbps, int overhead) {
+static void probe(int s, int pktsize, int kbps, int overhead, struct addrinfo* to) {
     long delay_ns = ((pktsize+overhead) * 8000) / kbps *1000;
     
     uint8_t buf[65536];
@@ -133,7 +133,7 @@ static void probe(int s, int pktsize, int kbps, int overhead) {
             len = 20; // warmup to get min rtt.
         }
         
-        send(s, buf, len, 0);
+        sendto(s, buf, len, 0, to->ai_addr, to->ai_addrlen);
         
         seq_+=1;
         
@@ -186,7 +186,10 @@ static void measure(int s) {
             }
         }
         
-        ssize_t ret = recv(s, buf, sizeof(buf), 0);
+        struct sockaddr_storage sas;
+        socklen_t sas_len = sizeof(sas);
+
+        ssize_t ret = recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr*)&sas, &sas_len);
         if (ret == -1) {
             if (errno == EAGAIN) {
                 if (!outage_reported) {
@@ -366,6 +369,8 @@ int main(int argc, char* argv[]) {
     if (addr->ai_next) {
         fprintf(stderr, "Warning: using only one of addresses retuned by getaddrinfo\n");
     }
+
+    struct addrinfo *probe_bind_addr = NULL;
     
     
     int s;
@@ -384,8 +389,12 @@ int main(int argc, char* argv[]) {
         }
     }
     if (!strcmp(cmd, "probe")) {
-        if (connect(s, addr->ai_addr, addr->ai_addrlen)) {  perror("connect");  return 5;  }
-        
+        //if (connect(s, addr->ai_addr, addr->ai_addrlen)) {  perror("connect");  return 5;  }
+        hints.ai_flags = AI_PASSIVE;
+        gai_error=getaddrinfo("0.0.0.0","0", &hints, &probe_bind_addr);
+        if (gai_error) { fprintf(stderr, "getaddrinfo 2: %s\n",gai_strerror(gai_error)); return 4; }
+        if (!probe_bind_addr) { fprintf(stderr, "getaddrinfo 2 returned no addresses\n");   return 6;  }
+        if (bind(s, probe_bind_addr->ai_addr, probe_bind_addr->ai_addrlen)) { perror("bind"); return 5; }
         
         int kbps           = atoi(argv[4]);
         int packet_size    = atoi(argv[5]);
@@ -424,7 +433,7 @@ int main(int argc, char* argv[]) {
         clock_gettime(CLOCK_MONOTONIC, &start);
         probe_pid = fork();
         if(!probe_pid) {
-            probe(s, packet_size, kbps, overhead);
+            probe(s, packet_size, kbps, overhead, addr);
         } else 
         if (probe_pid > 0) {
             {
