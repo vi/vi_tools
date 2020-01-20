@@ -35,6 +35,10 @@ long int timespec_milli(const struct timespec* q) {
     return 1000*q->tv_sec + q->tv_nsec / 1000 / 1000;
 }
 
+#define IP_MASK "\x44\x55\x66\x77"
+#define PORT_MASK "\x88\x99"
+
+#define NEWPROTO_SIGNATURE "nUTs"
 
 
 // Entries are never deleted
@@ -48,20 +52,31 @@ static void serve1(int socket_fd) {
     struct sockaddr_in sa;
     socklen_t sa_len = sizeof(sa);
     
-    ssize_t ret = recvfrom(socket_fd, buf, sizeof(buf)-16, 0, (struct sockaddr*)&sa, &sa_len);
+    ssize_t ret = recvfrom(socket_fd, buf, sizeof(buf)-22, 0, (struct sockaddr*)&sa, &sa_len);
     
     if (ret == -1) {
         return;
     }
     
     uint32_t id = 0;
+
+    bool also_put_ip_port = false;
     
     if (ret >= 4) {
         memcpy(&id, buf, 4);
     }
+
+    if (ret >= 8) {
+        if (!memcmp(buf+4,NEWPROTO_SIGNATURE,4)) also_put_ip_port = true;
+    }
     
-    memmove(buf+16, buf, ret);
-    ret+=16;
+    if (!also_put_ip_port) {
+        memmove(buf+16, buf, ret);
+        ret+=16;
+    } else {
+        memmove(buf+22, buf, ret);
+        ret+=22;
+    }
     
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -86,6 +101,25 @@ static void serve1(int socket_fd) {
     memcpy(buf+ 8, &nano, 4);
     uint32_t seq = htonl(seqs[id]);
     memcpy(buf+ 12, &seq, 4);
+    
+    if (also_put_ip_port) {
+        if (sa.sin_family == AF_INET) {
+            size_t i; 
+            uint8_t *b = (uint8_t*)buf + 16;
+            uint8_t *a = (uint8_t*)&sa.sin_addr;
+            for(i=0; i<4; ++i) {
+                b[i] = a[i] ^ IP_MASK[i];
+            }
+            b = (uint8_t*)buf + 20;
+            a = (uint8_t*)&sa.sin_port;
+            for(i=0; i<2; ++i) {
+                b[i] = a[i] ^ PORT_MASK[i];
+            }
+        } else {
+            memcpy(buf+16, IP_MASK, 4);
+            memcpy(buf+20, PORT_MASK, 2);
+        }
+    }
     
     sendto(socket_fd, buf, ret, 0,  (struct sockaddr*)&sa, sa_len);
     
@@ -119,18 +153,19 @@ static void probe(int s, int pktsize, int kbps, int overhead, struct addrinfo* t
         
         memcpy(buf+ 0, &id, 4);
         uint32_t high = htonl((ts.tv_sec&0xFFFFFFFF00000000LL)>>32);
-        memcpy(buf+ 4, &high, 4);
+        memcpy(buf+ 4, NEWPROTO_SIGNATURE, 4); // new protocol version. Like "STUN", but not actual STUN.
+        memcpy(buf+ 8, &high, 4);
         uint32_t low  = htonl((ts.tv_sec&0x00000000FFFFFFFFLL)>>0);
-        memcpy(buf+ 8, &low, 4);
+        memcpy(buf+ 12, &low, 4);
         uint32_t nano = htonl(ts.tv_nsec);
-        memcpy(buf+ 12, &nano, 4);
+        memcpy(buf+ 16, &nano, 4);
         uint32_t seq = htonl(seq_);
-        memcpy(buf+ 16, &seq, 4);
+        memcpy(buf+ 20, &seq, 4);
         
         int len = pktsize;
         
         if (seq_ < packets_in_first_5_seconds) {
-            len = 20; // warmup to get min rtt.
+            len = 24; // warmup to get min rtt.
         }
         
         sendto(s, buf, len, 0, to->ai_addr, to->ai_addrlen);
@@ -153,6 +188,8 @@ struct snapshot {
     uint32_t seq1;
     uint32_t seq2;
     uint32_t seq3;
+    unsigned char ip[4];
+    unsigned short port;
 };
 
 static void measure(int s) {
@@ -162,7 +199,7 @@ static void measure(int s) {
     bool outage_reported = false;
     struct snapshot info;
     uint32_t seq3 = 0;
-    struct timespec basets2;
+    struct timespec basets2 = {0,0};
     uint32_t minrtt = 0xFFFFFFFF;
     
     clock_gettime(CLOCK_REALTIME, &info.ts3);
@@ -228,17 +265,23 @@ static void measure(int s) {
             info.ts2.tv_sec |= ntohl(low);
             info.ts2.tv_nsec = ntohl(nano);
             info.seq2 = ntohl(seq);
+
+            info.ip[0] = buf[16] ^ IP_MASK[0];
+            info.ip[1] = buf[17] ^ IP_MASK[1];
+            info.ip[2] = buf[18] ^ IP_MASK[2];
+            info.ip[3] = buf[19] ^ IP_MASK[3];
+            info.port = ((unsigned short)(buf[20] ^ PORT_MASK[0]) << 8) + (unsigned short)(buf[21] ^ PORT_MASK[1]);
         }
         {
             uint32_t high;
             uint32_t low;
             uint32_t nano;
             uint32_t seq;
-            memcpy( &id      ,buf+ 16+0  , 4);
-            memcpy( &high    ,buf+ 16+4  , 4);
-            memcpy( &low     ,buf+ 16+8  , 4);
-            memcpy( &nano    ,buf+ 16+12  , 4);
-            memcpy( &seq     ,buf+ 16+16 , 4);
+            memcpy( &id      ,buf+ 22+0  , 4);
+            memcpy( &high    ,buf+ 22+8  , 4);
+            memcpy( &low     ,buf+ 22+12 , 4);
+            memcpy( &nano    ,buf+ 22+16 , 4);
+            memcpy( &seq     ,buf+ 22+20 , 4);
             info.ts1.tv_sec = ((uint64_t)ntohl(high)) << 32;
             info.ts1.tv_sec |= ntohl(low);
             info.ts1.tv_nsec = ntohl(nano);
@@ -400,8 +443,8 @@ int main(int argc, char* argv[]) {
         int packet_size    = atoi(argv[5]);
         int overhead       = atoi(argv[6]);
         
-        if (packet_size < 20) {
-            fprintf(stderr, "Minimal packet_size is 20\n");
+        if (packet_size < 24) {
+            fprintf(stderr, "Minimal packet_size is 24\n");
             return 1;
         }
         if (packet_size > 65536) {
