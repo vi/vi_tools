@@ -201,6 +201,8 @@ static void measure(int s) {
     uint32_t seq3 = 0;
     struct timespec basets2 = {0,0};
     uint32_t minrtt = 0xFFFFFFFF;
+    unsigned char previp[4] = {0,0,0,0};
+    unsigned short prevport = 0;
     
     clock_gettime(CLOCK_REALTIME, &info.ts3);
     printf("CLOCK_REALTIME=%ld.%09ld ", 
@@ -347,8 +349,32 @@ static void measure(int s) {
             (unsigned long) info.ts3.tv_sec, (unsigned long) info.ts3.tv_nsec/1000/1000);
         
         fprintf(stdout, "%02d %lu", (int)ret, (unsigned long)id);
+
+        fprintf(stdout, " %d.%d.%d.%d:%d",
+                (int)info.ip[0],
+                (int)info.ip[1],
+                (int)info.ip[2],
+                (int)info.ip[3],
+                (int)info.port);
         
         fprintf(stdout, "\n");
+
+        if (!memcmp(&previp, &info.ip, 4)) {
+            // No change
+            if (prevport != info.port) {
+                fprintf(stdout, "NEW_PORT\n");
+            }
+        } else {
+            if (!memcmp(&previp, "\0\0\0\0", 4)) {
+                // Initial IP
+            } else {
+                fprintf(stdout, "NEW_IP\n");
+            }
+        }
+
+        memcpy(&previp, &info.ip, 4);
+        memcpy(&prevport, &info.port, 2);
+
         fflush(stdout);
         
         seq3 += 1;
