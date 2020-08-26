@@ -16,6 +16,8 @@
 
 #include <map>
 
+#include "timing_mach.h"
+
 
 void timespec_diff(const struct timespec *start, const struct timespec *stop,
                    struct timespec *result)
@@ -177,7 +179,7 @@ static void probe(int s, int pktsize, int kbps, int overhead, struct addrinfo* t
             ts_next.tv_nsec -= 1000*1000*1000;
             ts_next.tv_sec += 1;
         }
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts_next, NULL);
+        clock_nanosleep_abstime(&ts_next);
     }
 }
 
