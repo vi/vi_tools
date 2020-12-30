@@ -160,10 +160,11 @@ DEF
  44 45 46 0a                                      DEF.
 --
 
+```
 
 # dump_tc_stats
 
-```
+
 $ dump_tc_stats
 Usage: dump_tc_stats <iface>
 Dump interface statistics periodically. Don't forget to `tc qdisc add <iface> root ...` something
