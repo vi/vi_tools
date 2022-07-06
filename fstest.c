@@ -169,10 +169,10 @@ int generate_block(int random, size_t len, unsigned char *buf){
 	    break;
 	case 3: // 32bit pattern fill
 	    {
-		unsigned long c;
+		unsigned char c[4];
 		RANDOMIZE(c);
-		for(i=0; i<len/4; ++i){
-		    ((unsigned long*)buf)[i]=c;
+		for(i=0; i<len; ++i){
+		    buf[i]=c[i%4];
 		}
 	    }
 	    break;
