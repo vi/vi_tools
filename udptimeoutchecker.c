@@ -168,8 +168,8 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "    udptimeoutchecker probe bind_addr bind_port connect_addr connect_port\n");
         fprintf(stderr, "Probes time for which UDP connection though a NAT stays open.\n");
         fprintf(stderr, "Example:\n");
-        fprintf(stderr, "    udptimeoutchecker serve 0.0.0.0 909\n");
-        fprintf(stderr, "    udptimeoutchecker probe 0.0.0.0 0 vi-server.org 909\n");
+        fprintf(stderr, "    udptimeoutchecker serve 0.0.0.0 1909\n");
+        fprintf(stderr, "    udptimeoutchecker probe 0.0.0.0 0 vi-server.org 1909\n");
         fprintf(stderr, "\n");
         return 1;
     }
