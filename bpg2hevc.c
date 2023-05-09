@@ -1,3 +1,6 @@
+// This does not work.
+// See https://github.com/vi/bpg2hevc instead.
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
